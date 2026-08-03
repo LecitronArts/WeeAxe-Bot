@@ -11,14 +11,14 @@ Restore the legacy in-game search behavior without bringing back the legacy mono
 - Search reply batches run through one global serial queue.
 - A queued or running search batch for the same player is dropped.
 - Each completed search batch holds the queue for ten seconds.
-- Pagination shows the current page, up to three nearby page commands, and previous/next commands when those pages exist.
+- Pagination shows the current page, up to four nearby page commands, and previous/next commands when those pages exist.
 - Flutter's local song-library search remains at ten songs per page.
 
 ## Behavior
 
 `#search <keyword>` opens page one. `#search <keyword>,<page>` opens the requested page, clamped by the song library. Results retain the current `relativePath | #play <relativePath>` command text.
 
-The private reply batch is a search header, result count, five or fewer song rows, current-page text, a three-page command window, and previous/next commands. Each sent message has a 150 millisecond delay before the next one. Single-page result sets omit pagination messages.
+The private reply batch is a search header, result count, five or fewer song rows, current-page text, a four-page command window, and previous/next commands. Each sent message has a 150 millisecond delay before the next one. Single-page result sets omit pagination messages.
 
 When a search request arrives while the same player's search batch is queued or running, it does not run and the player receives one `Search already in progress.` private reply. Search batches from different players remain serialized so the Bot does not issue interleaved bursts.
 

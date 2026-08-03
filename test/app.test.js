@@ -286,10 +286,11 @@ test('a failed saveSettings leaves the running bot and playback untouched', asyn
   assert.equal(disconnects, 0);
 });
 
-test('routes an owner whisper to the active library and replies with playable songs', async (t) => {
+test('routes an owner whisper to a paced five-song search page with navigation', async (t) => {
   const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
   let onWhisper;
   const searchCalls = [];
+  const sleeps = [];
   const bot = {
     whispers: [],
     whisper(username, message) { this.whispers.push([username, message]); }
@@ -301,7 +302,12 @@ test('routes an owner whisper to the active library and replies with playable so
         resolveSong: async () => 'song.nbs',
         search: async (query, page, pageSize) => {
           searchCalls.push({ query, page, pageSize });
-          return { items: ['piano/song.nbs'], page: 2, totalPages: 3, total: 21 };
+          return {
+            items: ['piano/one.nbs', 'piano/two.nbs', 'piano/three.nbs', 'piano/four.nbs', 'piano/five.nbs'],
+            page: 2,
+            totalPages: 5,
+            total: 21
+          };
         }
       }),
       createBotManager: (options) => {
@@ -314,7 +320,8 @@ test('routes an owner whisper to the active library and replies with playable so
         };
       },
       createPlaybackController: () => ({ play: async () => {}, stop: async () => {} }),
-      loadKeymap: () => () => null
+      loadKeymap: () => () => null,
+      sleep: async (milliseconds) => sleeps.push(milliseconds)
     }
   });
   const control = await app.start();
@@ -326,11 +333,49 @@ test('routes an owner whisper to the active library and replies with playable so
   assert.equal(typeof onWhisper, 'function');
   await onWhisper({ bot, username: 'Admin', message: '#search piano,2' });
 
-  assert.deepEqual(searchCalls, [{ query: 'piano', page: 2, pageSize: 10 }]);
+  assert.deepEqual(searchCalls, [{ query: 'piano', page: 2, pageSize: 5 }]);
   assert.deepEqual(bot.whispers, [
-    ['Admin', 'Songs 2/3 (21 total):'],
-    ['Admin', 'piano/song.nbs | #play piano/song.nbs']
+    ['Admin', 'Search'],
+    ['Admin', '"piano" found 21 songs.'],
+    ['Admin', 'piano/one.nbs | #play piano/one.nbs'],
+    ['Admin', 'piano/two.nbs | #play piano/two.nbs'],
+    ['Admin', 'piano/three.nbs | #play piano/three.nbs'],
+    ['Admin', 'piano/four.nbs | #play piano/four.nbs'],
+    ['Admin', 'piano/five.nbs | #play piano/five.nbs'],
+    ['Admin', 'Page 2/5'],
+    ['Admin', 'Pages: #search piano,1 | #search piano,2 | #search piano,3 | #search piano,4'],
+    ['Admin', 'Previous: #search piano,1 | Next: #search piano,3']
   ]);
+  assert.deepEqual(sleeps, [150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 10000]);
+});
+
+test('keeps Flutter library searches at ten songs per page', async (t) => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
+  const searchCalls = [];
+  const app = await createApp({
+    configPath: path.join(directory, 'config.json'),
+    dependencies: {
+      createSongLibrary: () => ({
+        resolveSong: async () => 'song.nbs',
+        search: async (query, page, pageSize) => {
+          searchCalls.push({ query, page, pageSize });
+          return { items: [], page: 1, totalPages: 1, total: 0 };
+        }
+      }),
+      createBotManager: () => ({ disconnect: async () => {}, getPlaybackBots: async () => [], releaseChildBots: async () => {} }),
+      createPlaybackController: () => ({ play: async () => {}, stop: async () => {} }),
+      loadKeymap: () => () => null
+    }
+  });
+  const control = await app.start();
+  t.after(async () => {
+    await app.shutdown();
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  });
+
+  await control.requestForTest({ id: 'flutter-search', command: 'searchSongs', payload: { query: 'piano', page: 3 } });
+
+  assert.deepEqual(searchCalls, [{ query: 'piano', page: 3, pageSize: 10 }]);
 });
 
 test('routes play, stop, and ride whispers through the active runtime', async (t) => {

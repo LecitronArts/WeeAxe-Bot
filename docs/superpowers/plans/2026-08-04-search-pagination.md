@@ -28,7 +28,7 @@
 - Modify: `src/app.js`
 - Modify: `test/app.test.js`
 
-- [ ] Write failing integration tests proving game search calls `library.search(query, page, 5)`, paces all reply messages by 150 milliseconds, renders up to five playable song rows, shows the current page, shows a three-page command window, and emits bounded previous/next commands.
+- [ ] Write failing integration tests proving game search calls `library.search(query, page, 5)`, paces all reply messages by 150 milliseconds, renders up to five playable song rows, shows the current page, shows a four-page command window, and emits bounded previous/next commands.
 - [ ] Run `node --test test/app.test.js` and verify the search tests fail because game search requests ten songs and sends no navigation.
 - [ ] Add a game-search reply formatter that calls the scheduler. It emits the search header and count, then five or fewer `relativePath | #play relativePath` rows, then the legacy-style page footer. It sends each message through the existing source-Bot reply function and awaits 150 milliseconds between sends. A duplicate request replies `Search already in progress.` without joining the queue.
 - [ ] Keep `searchSongs` in the control server on page size ten, preserving Flutter behavior.

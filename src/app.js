@@ -5,6 +5,7 @@ const { createSongLibrary } = require('./song-library');
 const { createBotManager } = require('./bot-manager');
 const { createPlaybackController } = require('./playback');
 const { createCommandRouter } = require('./command-router');
+const { createPrivateReplyScheduler } = require('./private-reply-scheduler');
 const { sendTabComplete } = require('./protocol-adapter');
 const { loadKeymap } = require('./keymap');
 const { createControlServer } = require('./control-server');
@@ -14,15 +15,18 @@ async function createApp({ configPath, port = 0, mineflayer = require('mineflaye
     createSongLibrary: buildSongLibrary = createSongLibrary,
     createBotManager: buildBotManager = createBotManager,
     createPlaybackController: buildPlaybackController = createPlaybackController,
+    createPrivateReplyScheduler: buildPrivateReplyScheduler = createPrivateReplyScheduler,
     loadKeymap: loadKeymapFile = loadKeymap,
     sendTabComplete: sendPacket = sendTabComplete,
     readFile = fs.readFile,
-    saveConfig: persistConfig = saveConfig
+    saveConfig: persistConfig = saveConfig,
+    sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
   } = dependencies;
   let config = await loadConfig(configPath);
   let control;
   const publish = (event) => control?.publish(event);
   const logger = createLogger(publish);
+  const privateReplyScheduler = buildPrivateReplyScheduler({ sleep });
   let botManager;
   let playback;
   let playbackGeneration = 0;
@@ -69,16 +73,39 @@ async function createApp({ configPath, port = 0, mineflayer = require('mineflaye
       if (!bot || typeof bot.whisper !== 'function') throw new Error('command source bot cannot reply');
       await bot.whisper(username, message);
     };
+    async function replySearchPage(query, page, username, context) {
+      const scheduled = privateReplyScheduler.schedule(username, async () => {
+        const result = await runtimeLibrary.search(query, page, 5);
+        const messages = ['Search', `"${query}" found ${result.total} songs.`];
+        messages.push(...result.items.map((relativePath) => `${relativePath} | #play ${relativePath}`));
+        if (result.totalPages > 1) {
+          const startPage = result.page === 1 ? 1 : result.page - 1;
+          const pageCount = result.page === 1 ? 3 : 2;
+          const pages = [];
+          for (let currentPage = startPage; currentPage <= result.totalPages && currentPage <= result.page + pageCount; currentPage += 1) {
+            pages.push(`#search ${query},${currentPage}`);
+          }
+          const previous = result.page > 1 ? `#search ${query},${result.page - 1}` : 'unavailable';
+          const next = result.page < result.totalPages ? `#search ${query},${result.page + 1}` : 'unavailable';
+          messages.push(`Page ${result.page}/${result.totalPages}`);
+          messages.push(`Pages: ${pages.join(' | ')}`);
+          messages.push(`Previous: ${previous} | Next: ${next}`);
+        }
+        for (const message of messages) {
+          await reply(context, username, message);
+          await sleep(150);
+        }
+      });
+      if (scheduled.dropped) {
+        await reply(context, username, 'Search already in progress.');
+        return;
+      }
+      await scheduled;
+    }
     const runtime = { library: runtimeLibrary, botManager: undefined, playback: runtimePlayback };
     const commandRouter = createCommandRouter({
       commandPolicy: runtimeConfig.commandPolicy,
-      search: async (query, page, username, _mainBotName, context) => {
-        const result = await runtimeLibrary.search(query, page, 10);
-        await reply(context, username, `Songs ${result.page}/${result.totalPages} (${result.total} total):`);
-        for (const relativePath of result.items) {
-          await reply(context, username, `${relativePath} | #play ${relativePath}`);
-        }
-      },
+      search: (query, page, username, _mainBotName, context) => replySearchPage(query, page, username, context),
       play: async (relativePath, username, context) => {
         await startPlayback(runtime, relativePath, {
           onError: () => reply(context, username, 'Unable to start playback.')
