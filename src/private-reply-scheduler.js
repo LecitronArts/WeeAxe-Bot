@@ -7,15 +7,14 @@ function createPrivateReplyScheduler({ sleep = (milliseconds) => new Promise((re
 
     pendingUsernames.add(username);
     const scheduledTask = queue.then(async () => {
+      let succeeded = false;
       try {
         await task();
+        succeeded = true;
         return { dropped: false };
       } finally {
-        try {
-          await sleep(10000);
-        } finally {
-          pendingUsernames.delete(username);
-        }
+        pendingUsernames.delete(username);
+        if (succeeded) await sleep(10000);
       }
     });
 

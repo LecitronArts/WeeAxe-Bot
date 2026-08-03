@@ -79,6 +79,41 @@ test('continues queued tasks and clears the username after a task throws', async
   assert.deepEqual(runs, ['failed', 'following', 'retry']);
 });
 
+test('does not cool down after a task throws before running the next user', async () => {
+  const delays = [];
+  const runs = [];
+  const scheduler = createPrivateReplyScheduler({
+    sleep: async (milliseconds) => { delays.push(milliseconds); }
+  });
+  const failed = scheduler.schedule('Alice', async () => { throw new Error('reply failed'); });
+  const following = scheduler.schedule('Bob', async () => { runs.push('Bob'); });
+
+  await assert.rejects(failed, /reply failed/);
+  assert.deepEqual(await following, { dropped: false });
+  assert.deepEqual(runs, ['Bob']);
+  assert.deepEqual(delays, [10000]);
+});
+
+test('queues a username again after its successful task while global cooldown is pending', async () => {
+  const events = [];
+  let releaseCooldown;
+  const cooldown = new Promise((resolve) => { releaseCooldown = resolve; });
+  const scheduler = createPrivateReplyScheduler({
+    sleep: async () => cooldown
+  });
+  const first = scheduler.schedule('Alice', async () => { events.push('first'); });
+
+  await new Promise(setImmediate);
+  const second = scheduler.schedule('Alice', async () => { events.push('second'); });
+  assert.notDeepEqual(second, { dropped: true });
+  assert.deepEqual(events, ['first']);
+
+  releaseCooldown();
+  assert.deepEqual(await first, { dropped: false });
+  assert.deepEqual(await second, { dropped: false });
+  assert.deepEqual(events, ['first', 'second']);
+});
+
 test('waits 10000ms after every completed task', async () => {
   const delays = [];
   const scheduler = createPrivateReplyScheduler({
