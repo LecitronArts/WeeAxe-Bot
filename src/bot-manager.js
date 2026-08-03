@@ -18,7 +18,8 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
   }
   function parseServerPrivateCommand(bot, message) {
     const botName = String(bot.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = new RegExp(`^\\[([^\\]\\s]+).*?\\s->\\s(?:me|${botName})\\]\\s*(#\\S(?:.*\\S)?)\\s*$`, 'i').exec(message);
+    const ownerName = String(config.botOwner).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`^\\[(${ownerName})(?=[^A-Za-z0-9_]).*?\\s->\\s(?:me|${botName})\\]\\s*(#\\S(?:.*\\S)?)\\s*$`, 'i').exec(message);
     return match ? { username: match[1], message: match[2] } : undefined;
   }
   function attachMain(bot) {

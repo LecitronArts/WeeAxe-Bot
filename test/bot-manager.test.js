@@ -111,6 +111,18 @@ test('dispatches an owner command from the server private-message format', async
   await manager.disconnect();
 });
 
+test('extracts the owner name before the server private-message suffix', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('messagestr', '[Owner\u79c1\u804a -> me] #search piano');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, [{ bot, username: 'Owner', message: '#search piano' }]);
+  await manager.disconnect();
+});
+
 test('does not dispatch a private message addressed to another recipient', async () => {
   const received = [];
   const { manager } = createManager({ onWhisper: (command) => received.push(command) });
