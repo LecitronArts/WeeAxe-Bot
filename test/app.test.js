@@ -424,3 +424,38 @@ test('does not disclose playback failure details to the player', async (t) => {
     ['Admin', 'Unable to start playback.']
   ]);
 });
+
+test('replies with a generic message when a player command fails synchronously', async (t) => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
+  let onWhisper;
+  const bot = {
+    whispers: [],
+    whisper(username, message) { this.whispers.push([username, message]); }
+  };
+  const app = await createApp({
+    configPath: path.join(directory, 'config.json'),
+    dependencies: {
+      createSongLibrary: () => ({ search: async () => ({ items: [], page: 1, totalPages: 1, total: 0 }), resolveSong: async () => 'song.nbs' }),
+      createBotManager: (options) => {
+        onWhisper = options.onWhisper;
+        return {
+          disconnect: async () => {},
+          getPlaybackBots: async () => [],
+          releaseChildBots: async () => {},
+          ride: async () => { throw new Error('server command permission denied'); }
+        };
+      },
+      createPlaybackController: () => ({ play: async () => {}, stop: async () => {} }),
+      loadKeymap: () => () => null
+    }
+  });
+  const control = await app.start();
+  t.after(async () => {
+    await app.shutdown();
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  });
+
+  await onWhisper({ bot, username: 'Admin', message: '#ride' });
+
+  assert.deepEqual(bot.whispers, [['Admin', 'Unable to complete command.']]);
+});

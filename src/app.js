@@ -100,7 +100,16 @@ async function createApp({ configPath, port = 0, mineflayer = require('mineflaye
       config: runtimeConfig,
       logger,
       onStatus: (status) => publish({ type: 'connectionStatus', ...status }),
-      onWhisper: ({ bot, username, message }) => commandRouter.handle(username, message, { bot })
+      onWhisper: async ({ bot, username, message }) => {
+        try {
+          return await commandRouter.handle(username, message, { bot });
+        } catch (error) {
+          logger.error('player command failed', { error: error.message });
+          publish({ type: 'error', code: 'PLAYER_COMMAND_FAILED', message: error.message });
+          await reply({ bot }, username, 'Unable to complete command.');
+          return true;
+        }
+      }
     });
     runtime.botManager = runtimeBotManager;
     return { library: runtimeLibrary, botManager: runtimeBotManager, playback: runtimePlayback };
