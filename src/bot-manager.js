@@ -1,4 +1,4 @@
-function createBotManager({ mineflayer, config, logger, onStatus = () => {} }) {
+function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onWhisper = async () => {} }) {
   let mainBot;
   let closing = false;
   let reconnectTimer;
@@ -8,6 +8,11 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {} }) {
   function attachMain(bot) {
     bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/piano keyboard unicode'); report('connected'); });
     bot.on('error', (error) => logger.error('main bot error', { error: error.message }));
+    bot.on('whisper', (username, message) => {
+      if (username === bot.username || username === 'me' || username !== config.botOwner) return;
+      Promise.resolve(onWhisper({ bot, username, message }))
+        .catch((error) => logger.error('player command failed', { error: error.message }));
+    });
     bot.on('end', () => {
       if (mainBot === bot) mainBot = undefined;
       report('disconnected');
