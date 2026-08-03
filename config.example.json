@@ -1,0 +1,14 @@
+{
+  "serverHost": "",
+  "serverPort": 25565,
+  "mainBotName": "",
+  "botOwner": "",
+  "loginPassword": "",
+  "songRepository": "",
+  "reconnectDelayMs": 5000,
+  "commandPolicy": {
+    "allowPlay": true,
+    "allowStop": true,
+    "allowRide": true
+  }
+}
