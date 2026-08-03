@@ -98,6 +98,56 @@ test('ignores a main bot whisper from a non-owner', async () => {
   await manager.disconnect();
 });
 
+test('dispatches an owner command from the server private-message format', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('messagestr', '[Owner private -> me] #search piano');
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, [{ bot, username: 'Owner', message: '#search piano' }]);
+  await manager.disconnect();
+});
+
+test('does not dispatch a private message addressed to another recipient', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('messagestr', '[Owner private -> AnotherBot] #search piano');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, []);
+  await manager.disconnect();
+});
+
+test('ignores a server private-message command from a non-owner', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('messagestr', '[Guest private -> me] #search piano');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, []);
+  await manager.disconnect();
+});
+
+test('dispatches one command when both private-message events are emitted', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('whisper', 'Owner', '#search piano');
+  bot.emit('messagestr', '[Owner private -> me] #search piano');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(received.length, 1);
+  await manager.disconnect();
+});
+
 test('does not dispatch a child bot whisper', async () => {
   const received = [];
   const { manager, created } = createManager({ onWhisper: (command) => received.push(command) });

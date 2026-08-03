@@ -3,16 +3,32 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
   let closing = false;
   let reconnectTimer;
   let childBots = [];
+  const pendingCommands = new Set();
 
   function report(state, extra = {}) { onStatus({ state, childBotCount: childBots.length, ...extra }); }
+  function dispatchPlayerCommand(bot, username, message) {
+    if (mainBot !== bot || closing || username === bot.username || username === 'me' || username !== config.botOwner) return;
+    const key = `${username}\u0000${message}`;
+    if (pendingCommands.has(key)) return;
+    pendingCommands.add(key);
+    Promise.resolve()
+      .then(() => onWhisper({ bot, username, message }))
+      .catch((error) => logger.error('player command failed', { error: error.message }))
+      .finally(() => pendingCommands.delete(key));
+  }
+  function parseServerPrivateCommand(bot, message) {
+    const botName = String(bot.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`^\\[([^\\]\\s]+).*?\\s->\\s(?:me|${botName})\\]\\s*(#\\S(?:.*\\S)?)\\s*$`, 'i').exec(message);
+    return match ? { username: match[1], message: match[2] } : undefined;
+  }
   function attachMain(bot) {
     bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/piano keyboard unicode'); report('connected'); });
     bot.on('error', (error) => logger.error('main bot error', { error: error.message }));
-    bot.on('whisper', (username, message) => {
-      if (mainBot !== bot || closing || username === bot.username || username === 'me' || username !== config.botOwner) return;
-      Promise.resolve()
-        .then(() => onWhisper({ bot, username, message }))
-        .catch((error) => logger.error('player command failed', { error: error.message }));
+    bot.on('whisper', (username, message) => dispatchPlayerCommand(bot, username, message));
+    bot.on('messagestr', (message) => {
+      if (typeof message !== 'string') return;
+      const command = parseServerPrivateCommand(bot, message);
+      if (command) dispatchPlayerCommand(bot, command.username, command.message);
     });
     bot.on('end', () => {
       if (mainBot === bot) mainBot = undefined;
