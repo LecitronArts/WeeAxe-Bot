@@ -10,7 +10,8 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
     bot.on('error', (error) => logger.error('main bot error', { error: error.message }));
     bot.on('whisper', (username, message) => {
       if (username === bot.username || username === 'me' || username !== config.botOwner) return;
-      Promise.resolve(onWhisper({ bot, username, message }))
+      Promise.resolve()
+        .then(() => onWhisper({ bot, username, message }))
         .catch((error) => logger.error('player command failed', { error: error.message }));
     });
     bot.on('end', () => {

@@ -124,3 +124,18 @@ test('logs rejected player command callbacks', async () => {
   assert.deepEqual(errors, [['player command failed', { error: 'command failed' }]]);
   await manager.disconnect();
 });
+
+test('logs synchronous player command callback errors', async () => {
+  const errors = [];
+  const { manager } = createManager({
+    onWhisper: () => { throw new Error('command failed synchronously'); },
+    logger: { error: (...args) => errors.push(args) }
+  });
+  const bot = manager.connect();
+
+  assert.doesNotThrow(() => bot.emit('whisper', 'Owner', '/play song'));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(errors, [['player command failed', { error: 'command failed synchronously' }]]);
+  await manager.disconnect();
+});
