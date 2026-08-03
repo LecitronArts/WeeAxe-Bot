@@ -285,3 +285,142 @@ test('a failed saveSettings leaves the running bot and playback untouched', asyn
   assert.equal(stops, 0);
   assert.equal(disconnects, 0);
 });
+
+test('routes an owner whisper to the active library and replies with playable songs', async (t) => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
+  let onWhisper;
+  const searchCalls = [];
+  const bot = {
+    whispers: [],
+    whisper(username, message) { this.whispers.push([username, message]); }
+  };
+  const app = await createApp({
+    configPath: path.join(directory, 'config.json'),
+    dependencies: {
+      createSongLibrary: () => ({
+        resolveSong: async () => 'song.nbs',
+        search: async (query, page, pageSize) => {
+          searchCalls.push({ query, page, pageSize });
+          return { items: ['piano/song.nbs'], page: 2, totalPages: 3, total: 21 };
+        }
+      }),
+      createBotManager: (options) => {
+        onWhisper = options.onWhisper;
+        return {
+          disconnect: async () => {},
+          getPlaybackBots: async () => [],
+          releaseChildBots: async () => {},
+          ride: async () => {}
+        };
+      },
+      createPlaybackController: () => ({ play: async () => {}, stop: async () => {} }),
+      loadKeymap: () => () => null
+    }
+  });
+  const control = await app.start();
+  t.after(async () => {
+    await app.shutdown();
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  });
+
+  assert.equal(typeof onWhisper, 'function');
+  await onWhisper({ bot, username: 'Admin', message: '#search piano,2' });
+
+  assert.deepEqual(searchCalls, [{ query: 'piano', page: 2, pageSize: 10 }]);
+  assert.deepEqual(bot.whispers, [
+    ['Admin', 'Songs 2/3 (21 total):'],
+    ['Admin', 'piano/song.nbs | #play piano/song.nbs']
+  ]);
+});
+
+test('routes play, stop, and ride whispers through the active runtime', async (t) => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
+  let onWhisper;
+  const played = [];
+  const stopped = [];
+  const ridden = [];
+  const bot = {
+    whispers: [],
+    whisper(username, message) { this.whispers.push([username, message]); }
+  };
+  const app = await createApp({
+    configPath: path.join(directory, 'config.json'),
+    dependencies: {
+      createSongLibrary: () => ({
+        resolveSong: async (relativePath) => relativePath,
+        search: async () => ({ items: [], page: 1, totalPages: 1, total: 0 })
+      }),
+      createBotManager: (options) => {
+        onWhisper = options.onWhisper;
+        return {
+          disconnect: async () => {},
+          getPlaybackBots: async () => [],
+          releaseChildBots: async () => {},
+          ride: async (username) => ridden.push(username)
+        };
+      },
+      createPlaybackController: () => ({
+        play: async (song) => played.push(song.toString()),
+        stop: async () => stopped.push('stop')
+      }),
+      loadKeymap: () => () => null,
+      readFile: async (relativePath) => Buffer.from(relativePath)
+    }
+  });
+  const control = await app.start();
+  t.after(async () => {
+    await app.shutdown();
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  });
+
+  await onWhisper({ bot, username: 'Admin', message: '#play songs/demo.nbs' });
+  await new Promise(setImmediate);
+  await onWhisper({ bot, username: 'Admin', message: '#stop' });
+  await onWhisper({ bot, username: 'Admin', message: '#ride' });
+
+  assert.deepEqual(played, ['songs/demo.nbs']);
+  assert.deepEqual(stopped, ['stop', 'stop']);
+  assert.deepEqual(ridden, ['Admin']);
+  assert.deepEqual(bot.whispers, [
+    ['Admin', 'Playback started.'],
+    ['Admin', 'Playback stopped.'],
+    ['Admin', 'Ride requested.']
+  ]);
+});
+
+test('does not disclose playback failure details to the player', async (t) => {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'weeaxe-app-'));
+  let onWhisper;
+  const bot = {
+    whispers: [],
+    whisper(username, message) { this.whispers.push([username, message]); }
+  };
+  const app = await createApp({
+    configPath: path.join(directory, 'config.json'),
+    dependencies: {
+      createSongLibrary: () => ({
+        resolveSong: async () => { throw new Error('D:/private/songs/missing.nbs'); },
+        search: async () => ({ items: [], page: 1, totalPages: 1, total: 0 })
+      }),
+      createBotManager: (options) => {
+        onWhisper = options.onWhisper;
+        return { disconnect: async () => {}, getPlaybackBots: async () => [], releaseChildBots: async () => {}, ride: async () => {} };
+      },
+      createPlaybackController: () => ({ play: async () => assert.fail('must not play'), stop: async () => {} }),
+      loadKeymap: () => () => null
+    }
+  });
+  const control = await app.start();
+  t.after(async () => {
+    await app.shutdown();
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  });
+
+  await onWhisper({ bot, username: 'Admin', message: '#play missing.nbs' });
+  await new Promise(setImmediate);
+
+  assert.deepEqual(bot.whispers, [
+    ['Admin', 'Playback started.'],
+    ['Admin', 'Unable to start playback.']
+  ]);
+});

@@ -28,3 +28,17 @@ test('enforces command policy and reports a disabled command', async () => {
   assert.equal(await router.handle('Player', '#stop'), true);
   assert.deepEqual(messages, [['Player', 'This command is disabled.']]);
 });
+
+test('explains the required argument for incomplete search and play commands', async () => {
+  const messages = [];
+  const router = createCommandRouter({
+    whisper: async (user, message) => messages.push([user, message])
+  });
+
+  assert.equal(await router.handle('Player', '#search'), true);
+  assert.equal(await router.handle('Player', '#play'), true);
+  assert.deepEqual(messages, [
+    ['Player', 'Usage: #search <query>[,page]'],
+    ['Player', 'Usage: #play <relative-song-path.nbs>']
+  ]);
+});

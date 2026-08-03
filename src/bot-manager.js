@@ -1,4 +1,4 @@
-function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onWhisper = async () => {} }) {
+function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onWhisper = async () => {}, sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)) }) {
   let mainBot;
   let closing = false;
   let reconnectTimer;
@@ -9,7 +9,7 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
     bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/piano keyboard unicode'); report('connected'); });
     bot.on('error', (error) => logger.error('main bot error', { error: error.message }));
     bot.on('whisper', (username, message) => {
-      if (username === bot.username || username === 'me' || username !== config.botOwner) return;
+      if (mainBot !== bot || closing || username === bot.username || username === 'me' || username !== config.botOwner) return;
       Promise.resolve()
         .then(() => onWhisper({ bot, username, message }))
         .catch((error) => logger.error('player command failed', { error: error.message }));
@@ -47,7 +47,22 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
     mainBot = undefined; report('disconnected');
     if (bot?._client && !bot._client.ended) bot.quit();
   }
-  return { connect, disconnect, getMainBot: () => mainBot, getPlaybackBots, releaseChildBots };
+  async function ride(username) {
+    const bots = childBots.length > 0 ? childBots : [mainBot];
+    let activated = 0;
+    await Promise.all(bots.map(async (bot) => {
+      if (!bot?._client || bot._client.ended || typeof bot.chat !== 'function') return;
+      bot.chat(`/tp ${username}`);
+      bot.clearControlStates?.();
+      await sleep(2000);
+      const target = bot.nearestEntity?.((entity) => entity?.username === username);
+      if (!target || typeof bot.activateEntityAt !== 'function') return;
+      await bot.activateEntityAt(target, target.position);
+      activated += 1;
+    }));
+    if (activated === 0) throw new Error('requested player is not available for riding');
+  }
+  return { connect, disconnect, getMainBot: () => mainBot, getPlaybackBots, releaseChildBots, ride };
 }
 
 module.exports = { createBotManager };

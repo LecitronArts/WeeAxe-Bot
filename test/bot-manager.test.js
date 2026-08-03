@@ -13,7 +13,7 @@ function createFakeBot() {
   return bot;
 }
 
-function createManager({ onWhisper, logger = { error() {} } } = {}) {
+function createManager({ onWhisper, logger = { error() {} }, sleep } = {}) {
   const created = [];
   const manager = createBotManager({
     mineflayer: { createBot: () => { const bot = createFakeBot(); created.push(bot); return bot; } },
@@ -26,7 +26,8 @@ function createManager({ onWhisper, logger = { error() {} } } = {}) {
       botOwner: 'Owner'
     },
     logger,
-    onWhisper
+    onWhisper,
+    sleep
   });
 
   return { manager, created };
@@ -137,5 +138,23 @@ test('logs synchronous player command callback errors', async () => {
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(errors, [['player command failed', { error: 'command failed synchronously' }]]);
+  await manager.disconnect();
+});
+
+test('rides the requested visible player with the main bot', async () => {
+  const owner = { type: 'player', username: 'Owner', position: { x: 1, y: 2, z: 3 } };
+  const { manager } = createManager({ sleep: async () => {} });
+  const bot = manager.connect();
+  const chats = [];
+  const activations = [];
+  bot.chat = (message) => chats.push(message);
+  bot.clearControlStates = () => {};
+  bot.nearestEntity = (predicate) => predicate(owner) ? owner : null;
+  bot.activateEntityAt = async (entity, position) => activations.push([entity, position]);
+
+  await manager.ride('Owner');
+
+  assert.deepEqual(chats, ['/tp Owner']);
+  assert.deepEqual(activations, [[owner, owner.position]]);
   await manager.disconnect();
 });
