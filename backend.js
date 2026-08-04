@@ -5,7 +5,7 @@ const value = (name, fallback) => { const index = args.indexOf(name); return ind
 (async () => {
   const app = await createApp({
     configPath: value('--config', path.join(__dirname, 'data', 'config.json')),
-    keymapPath: path.join(__dirname, '键位文件.txt'),
+    keymapPath: path.join(__dirname, 'keymap.txt'),
     port: Number(value('--control-port', '0'))
   });
   const started = await app.start();

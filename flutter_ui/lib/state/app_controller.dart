@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -52,8 +53,12 @@ class AppController extends ChangeNotifier {
           .toDouble();
     }
     if (event.type == 'log') {
+      final context = event.data['context'];
+      final contextText = context is Map && context.isNotEmpty
+          ? '  ${jsonEncode(context)}'
+          : '';
       logs.insert(0,
-          '${event.data['level'] ?? 'info'}  ${event.data['message'] ?? ''}');
+          '${event.data['level'] ?? 'info'}  ${event.data['message'] ?? ''}$contextText');
     }
     if (event.type == 'error') error = event.data['message']?.toString();
     if (logs.length > 1000) logs.removeLast();

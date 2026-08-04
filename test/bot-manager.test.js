@@ -50,6 +50,46 @@ test('reuses the existing main bot for repeated connect commands', async () => {
   assert.equal(first.quitCalls, 1);
 });
 
+test('pins main and playback bots to the configured 1.21.10 server protocol', async () => {
+  const options = [];
+  const manager = createBotManager({
+    mineflayer: {
+      createBot: (botOptions) => {
+        options.push(botOptions);
+        return createFakeBot();
+      }
+    },
+    config: {
+      serverHost: 'localhost',
+      serverPort: 25565,
+      mainBotName: 'PianoBot',
+      loginPassword: '',
+      reconnectDelayMs: 0,
+      botOwner: 'Owner'
+    },
+    logger: { error() {} }
+  });
+
+  manager.connect();
+  await manager.getPlaybackBots(2);
+
+  assert.equal(options.length, 2);
+  assert.deepEqual(options.map((botOptions) => botOptions.version), ['1.21.10', '1.21.10']);
+  await manager.disconnect();
+});
+
+test('initializes the server private-chat channel after the main bot logs in', async () => {
+  const { manager } = createManager();
+  const bot = manager.connect();
+  const chats = [];
+  bot.chat = (message) => chats.push(message);
+
+  bot.emit('spawn');
+
+  assert.deepEqual(chats, ['/login ', '/pchat', '/piano keyboard unicode']);
+  await manager.disconnect();
+});
+
 test('dispatches a main bot whisper from the configured owner', async () => {
   const received = [];
   const { manager } = createManager({ onWhisper: (command) => received.push(command) });
@@ -71,6 +111,17 @@ test('ignores a main bot whisper sent by itself', async () => {
   await Promise.resolve();
 
   assert.deepEqual(received, []);
+  await manager.disconnect();
+});
+
+test('records the server kick reason for the main bot', async () => {
+  const errors = [];
+  const { manager } = createManager({ logger: { error: (...args) => errors.push(args) } });
+  const bot = manager.connect();
+
+  bot.emit('kicked', { text: 'message too long' });
+
+  assert.deepEqual(errors, [['main bot was kicked: {"text":"message too long"}', { reason: '{"text":"message too long"}' }]]);
   await manager.disconnect();
 });
 
@@ -108,6 +159,19 @@ test('dispatches an owner command from the server private-message format', async
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(received, [{ bot, username: 'Owner', message: '#search piano' }]);
+  await manager.disconnect();
+});
+
+test('dispatches an owner numeric selection through the server private-message format', async () => {
+  const received = [];
+  const { manager } = createManager({ onWhisper: (command) => received.push(command) });
+  const bot = manager.connect();
+
+  bot.emit('messagestr', '[Owner private -> me] 8');
+
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(received, [{ bot, username: 'Owner', message: '8' }]);
   await manager.disconnect();
 });
 

@@ -125,3 +125,20 @@ test('waits 10000ms after every completed task', async () => {
 
   assert.deepEqual(delays, [10000, 10000]);
 });
+
+test('lets an owner page continuation release that owner cooldown without releasing another player', async () => {
+  const events = [];
+  let releaseCooldown;
+  const cooldown = new Promise((resolve) => { releaseCooldown = resolve; });
+  const scheduler = createPrivateReplyScheduler({ sleep: async () => cooldown });
+
+  const first = scheduler.schedule('Alice', async () => { events.push('first'); });
+  await new Promise(setImmediate);
+
+  const page = scheduler.schedule('Alice', async () => { events.push('page'); }, { continueAfterOwnCooldown: true });
+  await new Promise(setImmediate);
+
+  assert.deepEqual(events, ['first', 'page']);
+  releaseCooldown();
+  await Promise.all([first, page]);
+});

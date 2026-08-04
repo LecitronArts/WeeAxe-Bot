@@ -1,3 +1,5 @@
+const MINECRAFT_PROTOCOL_VERSION = '1.21.10';
+
 function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onWhisper = async () => {}, sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)) }) {
   let mainBot;
   let closing = false;
@@ -6,6 +8,15 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
   const pendingCommands = new Set();
 
   function report(state, extra = {}) { onStatus({ state, childBotCount: childBots.length, ...extra }); }
+  function formatKickReason(reason) {
+    if (reason === undefined || reason === null) return 'no reason supplied by server';
+    if (typeof reason === 'string') return reason;
+    try {
+      return JSON.stringify(reason) ?? String(reason);
+    } catch {
+      return String(reason);
+    }
+  }
   function dispatchPlayerCommand(bot, username, message) {
     if (mainBot !== bot || closing || username === bot.username || username === 'me' || username !== config.botOwner) return;
     const key = `${username}\u0000${message}`;
@@ -19,12 +30,16 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
   function parseServerPrivateCommand(bot, message) {
     const botName = String(bot.username).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const ownerName = String(config.botOwner).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = new RegExp(`^\\[(${ownerName})(?=[^A-Za-z0-9_]).*?\\s->\\s(?:me|${botName})\\]\\s*(#\\S(?:.*\\S)?)\\s*$`, 'i').exec(message);
+    const match = new RegExp(`^\\[(${ownerName})(?=[^A-Za-z0-9_]).*?\\s->\\s(?:me|${botName})\\]\\s*(#\\S(?:.*\\S)?|[1-8])\\s*$`, 'i').exec(message);
     return match ? { username: match[1], message: match[2] } : undefined;
   }
   function attachMain(bot) {
-    bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/piano keyboard unicode'); report('connected'); });
+    bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/pchat'); bot.chat('/piano keyboard unicode'); report('connected'); });
     bot.on('error', (error) => logger.error('main bot error', { error: error.message }));
+    bot.on('kicked', (reason) => {
+      const kickReason = formatKickReason(reason);
+      logger.error(`main bot was kicked: ${kickReason}`, { reason: kickReason });
+    });
     bot.on('whisper', (username, message) => dispatchPlayerCommand(bot, username, message));
     bot.on('messagestr', (message) => {
       if (typeof message !== 'string') return;
@@ -41,7 +56,7 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
     if (mainBot && !mainBot._client?.ended) return mainBot;
     clearTimeout(reconnectTimer);
     closing = false;
-    mainBot = mineflayer.createBot({ host: config.serverHost, port: config.serverPort, username: config.mainBotName, auth: 'offline' });
+    mainBot = mineflayer.createBot({ host: config.serverHost, port: config.serverPort, username: config.mainBotName, auth: 'offline', version: MINECRAFT_PROTOCOL_VERSION });
     attachMain(mainBot); report('connecting'); return mainBot;
   }
   async function releaseChildBots() {
@@ -52,7 +67,7 @@ function createBotManager({ mineflayer, config, logger, onStatus = () => {}, onW
     if (!mainBot) throw new Error('main bot is not connected');
     while (childBots.length + 1 < requiredCount) {
       const index = childBots.length + 1;
-      const bot = mineflayer.createBot({ host: config.serverHost, port: config.serverPort, username: `${config.mainBotName}${'Z'.repeat(index)}`, auth: 'offline' });
+      const bot = mineflayer.createBot({ host: config.serverHost, port: config.serverPort, username: `${config.mainBotName}${'Z'.repeat(index)}`, auth: 'offline', version: MINECRAFT_PROTOCOL_VERSION });
       bot.on('spawn', () => { bot.chat(`/login ${config.loginPassword}`); bot.chat('/piano keyboard unicode'); bot.chat(`/tp ${config.mainBotName}`); });
       childBots.push(bot);
     }
